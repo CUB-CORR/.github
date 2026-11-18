@@ -33,6 +33,7 @@ jobs:
     env:
       PROJECT_ID: "PVT_kwDODB3mn84BHONW"
       FIELD_ID: "PVTSSF_lADODB3mn84BHONWzhqZRWY"
+      FIELD_NAME: "Blocker"  # the name of FIELD_ID, used to read its value
       DEPENDENCY_OPTION_ID: "41254b19"
       TARGET_ISSUE_ID: ${{ inputs.issue_node_id }}
       DRY_RUN: ${{ inputs.dry_run }}
@@ -44,10 +45,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The issue's project item and its current Blocker option.
-          ITEM_FIELDS='id project { id }
-            fieldValues(first: 30) { nodes { ... on ProjectV2ItemFieldSingleSelectValue {
-              optionId field { ... on ProjectV2SingleSelectField { id } } } } }'
+          # The issue's project item and its current Blocker option. Reads only
+          # this one field: reading all field values would also need permissions
+          # for issue fields, issue types or reviewers, which the token lacks.
+          ITEM_FIELDS="id project { id }
+            blocker: fieldValueByName(name: \"$FIELD_NAME\") {
+              ... on ProjectV2ItemFieldSingleSelectValue { optionId } }"
           # The issue and its number of open sub-issues and open blockers.
           ISSUE_FIELDS='id number repository { nameWithOwner }
             subIssuesSummary { total completed }
@@ -58,8 +61,7 @@ jobs:
             ref: "\($issue.repository.nameWithOwner)#\($issue.number)",
             open: ($issue.subIssuesSummary.total - $issue.subIssuesSummary.completed
                    + $issue.issueDependenciesSummary.blockedBy),
-            current: ([$item.fieldValues.nodes[] | select(.field.id? == env.FIELD_ID)
-                       | .optionId] | first // "")
+            current: ($item.blocker.optionId // "")
           }'
 
           # Sets or clears the Blocker field of one row, if needed.
