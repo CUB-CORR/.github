@@ -1,0 +1,35 @@
+name: Feature
+description: New functionality, a new concept, or an improvement to something that works.
+type: Feature
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: The need or the limitation today. Who needs it and what for.
+      placeholder: "The interval helpers only accept Date / Datetime columns, so reprodicu offsets must be converted to timestamps first."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should exist or change. Sketch the API, the concept definition or the behavior.
+      placeholder: "`gap`, `max_gap` and `every` also accept integers when the time columns are integer offsets."
+    validations:
+      required: true
+
+  - type: textarea
+    id: affects
+    attributes:
+      label: Affects
+      description: Optional. Concepts, modules or users that change with it.
+      placeholder: "`utils/intervals.py`, reprodicu source"
+
+  - type: textarea
+    id: depends
+    attributes:
+      label: Depends on
+      description: Optional. Issues or PRs that must be merged first. Also add them under "Relationships → Blocked by" so the project board shows it.
+      placeholder: "#994"

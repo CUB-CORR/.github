@@ -1,12 +1,13 @@
-name: Concept / data problem
-description: A clinical concept or variable returns wrong, missing or unstable values, or needs a new definition.
-title: "Concept: "
+name: Concept bug
+description: A clinical concept or variable returns wrong, missing or unstable values.
+type: Bug
 labels: ["variable"]
 body:
   - type: markdown
     attributes:
       value: |
         Name the concepts it affects, describe what goes wrong, and back it with numbers. Never paste patient-level data: use counts, shares and aggregated plots.
+        A new concept or an improvement to a working one is a **Feature**.
 
   - type: textarea
     id: affects
@@ -14,18 +15,6 @@ body:
       label: Affects
       description: The concepts or variables (with their id), and the concepts built on them.
       placeholder: "`invasive_vent` (288), `mechanical_vent_duration` (273) → `sofa2_score`, `ventilator_free_days`"
-    validations:
-      required: true
-
-  - type: dropdown
-    id: kind
-    attributes:
-      label: Kind
-      options:
-        - Wrong or missing values
-        - Values change between runs, windows or observation levels
-        - Improvement of an existing concept
-        - New concept
     validations:
       required: true
 

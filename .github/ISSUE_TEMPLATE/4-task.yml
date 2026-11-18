@@ -1,5 +1,6 @@
 name: Task
-description: A feature, refactoring, documentation, tooling or infrastructure change.
+description: A specific piece of work, such as refactoring, documentation, tooling or infrastructure.
+type: Task
 body:
   - type: textarea
     id: why

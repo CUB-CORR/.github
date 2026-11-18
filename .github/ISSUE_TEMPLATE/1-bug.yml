@@ -1,11 +1,11 @@
 name: Bug
 description: Code crashes, returns a wrong result, or behaves differently than documented.
-title: "Bug: "
+type: Bug
 body:
   - type: markdown
     attributes:
       value: |
-        One bug per issue. Wrong values in a clinical concept or variable? Use **Concept / data problem** instead.
+        One bug per issue. Wrong values in a clinical concept or variable? Use **Concept bug** instead.
 
   - type: textarea
     id: problem
