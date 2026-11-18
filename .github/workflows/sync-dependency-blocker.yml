@@ -1,0 +1,104 @@
+name: Reusable - Sync Sub-Issue & Blocking Dependencies
+
+on:
+  workflow_call:
+    inputs:
+      issue_node_id:
+        description: 'The GraphQL node_id of the issue that triggered the event'
+        required: true
+        type: string
+    secrets:
+      PROJECTS_BLOCKER_SYNC_TOKEN:
+        description: 'Fine-grained PAT with Projects R/W and Issues Read permissions'
+        required: true
+
+jobs:
+  sync-blocker-field:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: "PVT_kwDODB3mn84BHONW"
+      FIELD_ID: "PVTSSF_lADODB3mn84BHONWzhqZRWY"
+      DEPENDENCY_OPTION_ID: "41254b19"
+      TARGET_ISSUE_ID: ${{ inputs.issue_node_id }}
+
+    steps:
+      - name: Evaluate blockers and update Project field
+        env:
+          GH_TOKEN: ${{ secrets.PROJECTS_BLOCKER_SYNC_TOKEN }}
+        run: |
+          # Helper function to evaluate a single issue and set/clear its Blocker field
+          sync_issue_blocker() {
+            local ISSUE_ID="$1"
+            if [ -z "$ISSUE_ID" ] || [ "$ISSUE_ID" == "null" ]; then
+              return
+            fi
+
+            RESPONSE=$(gh api graphql -f query='
+              query($issueId: ID!) {
+                node(id: $issueId) {
+                  ... on Issue {
+                    parent { id }
+                    subIssues(first: 25) {
+                      nodes { state }
+                    }
+                    blockedBy(first: 25) {
+                      nodes { state }
+                    }
+                    projectItems(first: 10) {
+                      nodes {
+                        id
+                        project { id }
+                      }
+                    }
+                  }
+                }
+              }' -f issueId="$ISSUE_ID")
+
+            ITEM_ID=$(echo "$RESPONSE" | jq -r --arg pid "$PROJECT_ID" \
+              '.data.node.projectItems.nodes[]? | select(.project.id == $pid) | .id')
+
+            if [ -n "$ITEM_ID" ]; then
+              OPEN_SUBS=$(echo "$RESPONSE" | jq '[.data.node.subIssues.nodes[]? | select(.state == "OPEN")] | length')
+              OPEN_BLOCKERS=$(echo "$RESPONSE" | jq '[.data.node.blockedBy.nodes[]? | select(.state == "OPEN")] | length')
+              TOTAL_BLOCKERS=$((OPEN_SUBS + OPEN_BLOCKERS))
+
+              if [ "$TOTAL_BLOCKERS" -gt 0 ]; then
+                gh api graphql -f query='
+                  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                    updateProjectV2ItemFieldValue(input: {
+                      projectId: $projectId
+                      itemId: $itemId
+                      fieldId: $fieldId
+                      value: { singleSelectOptionId: $optionId }
+                    }) {
+                      projectV2Item { id }
+                    }
+                  }' -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" -f fieldId="$FIELD_ID" -f optionId="$DEPENDENCY_OPTION_ID" > /dev/null
+                echo "Issue $ISSUE_ID: Set Blocker field to Dependency ($TOTAL_BLOCKERS open)."
+              else
+                gh api graphql -f query='
+                  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!) {
+                    clearProjectV2ItemFieldValue(input: {
+                      projectId: $projectId
+                      itemId: $itemId
+                      fieldId: $fieldId
+                    }) {
+                      projectV2Item { id }
+                    }
+                  }' -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" -f fieldId="$FIELD_ID" > /dev/null
+                echo "Issue $ISSUE_ID: Cleared Blocker field."
+              fi
+            fi
+
+            # Return parent ID if this issue is a sub-issue of a parent
+            echo "$RESPONSE" | jq -r '.data.node.parent.id // empty'
+          }
+
+          # 1. Evaluate the issue that triggered the event and capture its parent (if any)
+          PARENT_ID=$(sync_issue_blocker "$TARGET_ISSUE_ID" | tail -n 1)
+
+          # 2. If this was a child sub-issue (e.g. just closed/reopened), also re-evaluate its parent
+          if [ -n "$PARENT_ID" ] && [[ "$PARENT_ID" == I_* ]]; then
+            echo "Re-evaluating parent issue $PARENT_ID..."
+            sync_issue_blocker "$PARENT_ID" > /dev/null
+          fi
