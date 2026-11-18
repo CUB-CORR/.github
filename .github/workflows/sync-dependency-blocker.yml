@@ -1,104 +1,141 @@
 name: Reusable - Sync Sub-Issue & Blocking Dependencies
 
+# Sets the project's Blocker field to "Dependency" while an issue has open
+# sub-issues or open "blocked by" issues, and clears it once there are none.
+# A Blocker value set by hand ("External", "Needs Info", ...) is never changed.
+#
+# With an issue id, checks that issue, its parent and the issues it blocks.
+# Without one, checks every issue in the project. Actions has no trigger for
+# adding a sub-issue or a blocker, so callers should also run it on a schedule.
+
 on:
   workflow_call:
     inputs:
       issue_node_id:
-        description: 'The GraphQL node_id of the issue that triggered the event'
-        required: true
+        description: GraphQL node_id of the issue that triggered the event. Leave empty to check every issue in the project.
+        required: false
         type: string
+        default: ""
+      dry_run:
+        description: Only log what would change.
+        required: false
+        type: boolean
+        default: false
     secrets:
       PROJECTS_BLOCKER_SYNC_TOKEN:
-        description: 'Fine-grained PAT with Projects R/W and Issues Read permissions'
+        description: Fine-grained PAT with Projects read/write and Issues read permissions
         required: true
 
 jobs:
   sync-blocker-field:
     runs-on: ubuntu-latest
+    permissions: {}
     env:
       PROJECT_ID: "PVT_kwDODB3mn84BHONW"
       FIELD_ID: "PVTSSF_lADODB3mn84BHONWzhqZRWY"
       DEPENDENCY_OPTION_ID: "41254b19"
       TARGET_ISSUE_ID: ${{ inputs.issue_node_id }}
+      DRY_RUN: ${{ inputs.dry_run }}
 
     steps:
-      - name: Evaluate blockers and update Project field
+      - name: Evaluate blockers and update the Blocker field
         env:
           GH_TOKEN: ${{ secrets.PROJECTS_BLOCKER_SYNC_TOKEN }}
         run: |
-          # Helper function to evaluate a single issue and set/clear its Blocker field
-          sync_issue_blocker() {
-            local ISSUE_ID="$1"
-            if [ -z "$ISSUE_ID" ] || [ "$ISSUE_ID" == "null" ]; then
-              return
+          set -euo pipefail
+
+          # The issue's project item and its current Blocker option.
+          ITEM_FIELDS='id project { id }
+            fieldValues(first: 30) { nodes { ... on ProjectV2ItemFieldSingleSelectValue {
+              optionId field { ... on ProjectV2SingleSelectField { id } } } } }'
+          # The issue and its number of open sub-issues and open blockers.
+          ISSUE_FIELDS='id number repository { nameWithOwner }
+            subIssuesSummary { total completed }
+            issueDependenciesSummary { blockedBy }'
+          # jq: turns $item and $issue into one row to apply.
+          TO_ROW='{
+            item: $item.id,
+            ref: "\($issue.repository.nameWithOwner)#\($issue.number)",
+            open: ($issue.subIssuesSummary.total - $issue.subIssuesSummary.completed
+                   + $issue.issueDependenciesSummary.blockedBy),
+            current: ([$item.fieldValues.nodes[] | select(.field.id? == env.FIELD_ID)
+                       | .optionId] | first // "")
+          }'
+
+          # Sets or clears the Blocker field of one row, if needed.
+          apply_row() {
+            local item ref open current
+            item=$(jq -r .item <<<"$1")
+            ref=$(jq -r .ref <<<"$1")
+            open=$(jq -r .open <<<"$1")
+            current=$(jq -r .current <<<"$1")
+
+            if [ "$open" -gt 0 ] && [ -z "$current" ]; then
+              echo "$ref: set Blocker to Dependency ($open open)."
+              if [ "$DRY_RUN" = true ]; then return; fi
+              gh api graphql -f query='
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId, itemId: $itemId, fieldId: $fieldId
+                    value: { singleSelectOptionId: $optionId }
+                  }) { projectV2Item { id } }
+                }' -f projectId="$PROJECT_ID" -f itemId="$item" -f fieldId="$FIELD_ID" \
+                   -f optionId="$DEPENDENCY_OPTION_ID" > /dev/null
+            elif [ "$open" -eq 0 ] && [ "$current" = "$DEPENDENCY_OPTION_ID" ]; then
+              echo "$ref: cleared Blocker (no open dependencies)."
+              if [ "$DRY_RUN" = true ]; then return; fi
+              gh api graphql -f query='
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!) {
+                  clearProjectV2ItemFieldValue(input: {
+                    projectId: $projectId, itemId: $itemId, fieldId: $fieldId
+                  }) { projectV2Item { id } }
+                }' -f projectId="$PROJECT_ID" -f itemId="$item" -f fieldId="$FIELD_ID" > /dev/null
+            elif [ "$open" -gt 0 ] && [ "$current" != "$DEPENDENCY_OPTION_ID" ]; then
+              echo "$ref: $open open, but Blocker was set by hand; left as is."
             fi
-
-            RESPONSE=$(gh api graphql -f query='
-              query($issueId: ID!) {
-                node(id: $issueId) {
-                  ... on Issue {
-                    parent { id }
-                    subIssues(first: 25) {
-                      nodes { state }
-                    }
-                    blockedBy(first: 25) {
-                      nodes { state }
-                    }
-                    projectItems(first: 10) {
-                      nodes {
-                        id
-                        project { id }
-                      }
-                    }
-                  }
-                }
-              }' -f issueId="$ISSUE_ID")
-
-            ITEM_ID=$(echo "$RESPONSE" | jq -r --arg pid "$PROJECT_ID" \
-              '.data.node.projectItems.nodes[]? | select(.project.id == $pid) | .id')
-
-            if [ -n "$ITEM_ID" ]; then
-              OPEN_SUBS=$(echo "$RESPONSE" | jq '[.data.node.subIssues.nodes[]? | select(.state == "OPEN")] | length')
-              OPEN_BLOCKERS=$(echo "$RESPONSE" | jq '[.data.node.blockedBy.nodes[]? | select(.state == "OPEN")] | length')
-              TOTAL_BLOCKERS=$((OPEN_SUBS + OPEN_BLOCKERS))
-
-              if [ "$TOTAL_BLOCKERS" -gt 0 ]; then
-                gh api graphql -f query='
-                  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-                    updateProjectV2ItemFieldValue(input: {
-                      projectId: $projectId
-                      itemId: $itemId
-                      fieldId: $fieldId
-                      value: { singleSelectOptionId: $optionId }
-                    }) {
-                      projectV2Item { id }
-                    }
-                  }' -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" -f fieldId="$FIELD_ID" -f optionId="$DEPENDENCY_OPTION_ID" > /dev/null
-                echo "Issue $ISSUE_ID: Set Blocker field to Dependency ($TOTAL_BLOCKERS open)."
-              else
-                gh api graphql -f query='
-                  mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!) {
-                    clearProjectV2ItemFieldValue(input: {
-                      projectId: $projectId
-                      itemId: $itemId
-                      fieldId: $fieldId
-                    }) {
-                      projectV2Item { id }
-                    }
-                  }' -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" -f fieldId="$FIELD_ID" > /dev/null
-                echo "Issue $ISSUE_ID: Cleared Blocker field."
-              fi
-            fi
-
-            # Return parent ID if this issue is a sub-issue of a parent
-            echo "$RESPONSE" | jq -r '.data.node.parent.id // empty'
           }
 
-          # 1. Evaluate the issue that triggered the event and capture its parent (if any)
-          PARENT_ID=$(sync_issue_blocker "$TARGET_ISSUE_ID" | tail -n 1)
+          # Checks one issue by node id (skipped if it is not in the project).
+          sync_issue() {
+            local row
+            row=$(gh api graphql -f id="$1" -f query="
+              query(\$id: ID!) { node(id: \$id) { ... on Issue {
+                $ISSUE_FIELDS projectItems(first: 20) { nodes { $ITEM_FIELDS } } } } }" \
+              | jq -c '.data.node as $issue | $issue.projectItems.nodes[]?
+                       | select(.project.id == env.PROJECT_ID) as $item | '"$TO_ROW")
+            if [ -n "$row" ]; then
+              apply_row "$row"
+            fi
+          }
 
-          # 2. If this was a child sub-issue (e.g. just closed/reopened), also re-evaluate its parent
-          if [ -n "$PARENT_ID" ] && [[ "$PARENT_ID" == I_* ]]; then
-            echo "Re-evaluating parent issue $PARENT_ID..."
-            sync_issue_blocker "$PARENT_ID" > /dev/null
+          if [ -n "$TARGET_ISSUE_ID" ]; then
+            # The issue itself, then its parent and the issues it blocks, whose
+            # counts change when this issue is closed or reopened.
+            sync_issue "$TARGET_ISSUE_ID"
+            related=$(gh api graphql -f id="$TARGET_ISSUE_ID" -f query='
+              query($id: ID!) { node(id: $id) { ... on Issue {
+                parent { id } blocking(first: 100) { nodes { id } } } } }' \
+              --jq '.data.node | (.parent.id // empty), (.blocking.nodes[]?.id)')
+            for id in $related; do
+              sync_issue "$id"
+            done
+          else
+            # Every issue in the project, 100 items per page.
+            cursor=null  # -F sends null as JSON null: start at the first page
+            while :; do
+              page=$(gh api graphql -f project="$PROJECT_ID" -F cursor="$cursor" -f query="
+                query(\$project: ID!, \$cursor: String) { node(id: \$project) { ... on ProjectV2 {
+                  items(first: 100, after: \$cursor) {
+                    pageInfo { hasNextPage endCursor }
+                    nodes { $ITEM_FIELDS content { ... on Issue { $ISSUE_FIELDS } } }
+                  } } } }")
+              while IFS= read -r row; do
+                apply_row "$row"
+              done < <(jq -c '.data.node.items.nodes[] | select(.content.subIssuesSummary != null)
+                              | . as $item | .content as $issue | '"$TO_ROW" <<<"$page")
+              if [ "$(jq -r .data.node.items.pageInfo.hasNextPage <<<"$page")" != true ]; then
+                break
+              fi
+              cursor=$(jq -r .data.node.items.pageInfo.endCursor <<<"$page")
+            done
           fi
