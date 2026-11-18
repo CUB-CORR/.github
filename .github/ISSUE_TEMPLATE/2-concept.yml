@@ -1,0 +1,74 @@
+name: Concept / data problem
+description: A clinical concept or variable returns wrong, missing or unstable values, or needs a new definition.
+title: "Concept: "
+labels: ["variable"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Name the concepts it affects, describe what goes wrong, and back it with numbers. Never paste patient-level data: use counts, shares and aggregated plots.
+
+  - type: textarea
+    id: affects
+    attributes:
+      label: Affects
+      description: The concepts or variables (with their id), and the concepts built on them.
+      placeholder: "`invasive_vent` (288), `mechanical_vent_duration` (273) → `sofa2_score`, `ventilator_free_days`"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Wrong or missing values
+        - Values change between runs, windows or observation levels
+        - Improvement of an existing concept
+        - New concept
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What the concept does today and what goes wrong. Numbered points if there are several.
+      placeholder: |
+        1. The mapping file is Windows-1252 but read as UTF-8, so 50 rows with umlauts never match.
+        2. The join is exact and silent, so new spellings drop out without a warning.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: The cohort or sample you checked (size, years, source) and what you found. Tables and aggregated plots welcome.
+      placeholder: "Adult ICU stays 2020–2024 (83,502): 16,925 ventilation rows (74k h, 2,739 stays) are missing."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Optional. How to fix it, and what changes for studies that already use the concept.
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: Status
+      options:
+        - Reported, not analyzed yet
+        - Analyzed, fix to be written
+        - Code ready
+    validations:
+      required: true
+
+  - type: textarea
+    id: depends
+    attributes:
+      label: Depends on
+      description: Optional. Issues or PRs that must be merged first. Also add them under "Relationships → Blocked by" so the project board shows it.
+      placeholder: "#974"

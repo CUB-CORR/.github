@@ -1,0 +1,52 @@
+name: Bug
+description: Code crashes, returns a wrong result, or behaves differently than documented.
+title: "Bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One bug per issue. Wrong values in a clinical concept or variable? Use **Concept / data problem** instead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What goes wrong, in one or two sentences.
+      placeholder: Creating a cohort from `cub_hdp_dummy` with a `size` that is not a power of ten crashes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest code or the steps that show the bug, with the error message or wrong output.
+      placeholder: |
+        ```python
+        Cohort(obs_level="icu_stay", sources={"cub_hdp_dummy": {"size": 200}}, load_default_vars=False)
+        # ValueError: Cannot take a larger sample than population when replace is False
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: A cohort with 200 ICU stays.
+    validations:
+      required: true
+
+  - type: textarea
+    id: cause
+    attributes:
+      label: Cause and proposed fix
+      description: Optional. Where the bug comes from (file and line) and how to fix it, if known.
+      placeholder: "`simple_id_generator` in `sources/cub_hdp_dummy/random.py` sizes the id pool by powers of ten …"
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Optional. Package version or commit, Python version, environment (e.g. HPC, laptop, CI).
+      placeholder: corr-vars 2.1.1 / main @ 4a1cc19, Python 3.12, HPC

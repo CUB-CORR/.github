@@ -1,0 +1,43 @@
+name: Task
+description: A feature, refactoring, documentation, tooling or infrastructure change.
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: The problem or need behind the change. Link the issues or discussions it comes from.
+      placeholder: The same interval operations are written out by hand in many places, each with its own column names and edge cases.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What to do
+      description: The change, as a checklist where possible. Name files, functions and decisions still to be made.
+      placeholder: |
+        - [ ] Add `merge_intervals` and `split_intervals` to `utils/intervals.py`
+        - [ ] Move the free-days code onto them
+        - [ ] Decide: do the helpers accept integer offsets?
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Optional. How to tell the task is finished (tests, a CI job, a measurement).
+      placeholder: "`make test` passes and no concept merges intervals by hand."
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Out of scope
+      description: Optional. Related work this issue does not cover, with links to follow-up issues.
+
+  - type: textarea
+    id: depends
+    attributes:
+      label: Depends on
+      description: Optional. Issues or PRs that must be merged first. Also add them under "Relationships → Blocked by" so the project board shows it.
+      placeholder: "#994"
