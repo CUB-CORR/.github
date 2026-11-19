@@ -24,7 +24,7 @@ Each group does it slightly differently. CORR does this work once: consensus-bas
 - **>250,000** ICU stays
 - **>540,000** surgical procedures
 - **>4,000** computable clinical concepts
-- **3** campuses and **~30** ICUs, with ICU and perioperative records linked across the hospital stay
+- **3** hospital sites and **~30** ICUs, with ICU and perioperative records linked across the hospital stay
 - **25+** studies running on CORR, several of them prospective
 - **Data depth:** hospital information system, patient data management system, and high-frequency physiological data from patient monitors and ventilators, as well as free-text sources
 
